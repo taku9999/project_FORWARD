@@ -1,0 +1,38 @@
+version: "2"
+services:
+  forward_service:
+    image: l4t_forward:35.3.1
+    container_name: l4t_forward
+    network_mode: "host"
+    tty: true
+    stdin_open: true
+    runtime: nvidia
+    # devices:
+    #   - "/dev/ttyUSB0:/dev/ttyUSB0"
+    # environment:
+    #   - DISPLAY=$DISPLAY
+    volumes:
+      - type: bind
+        source: /var/run/dbus/system_bus_socket
+        target: /var/run/dbus/system_bus_socket
+      - type: bind
+        source: /run/jtop.sock
+        target: /run/jtop.sock
+      - type: bind
+        source: /home/infolab/docker_ws/bind_data
+        target: /workspace/bind_data
+      - type: bind
+        source: /home/infolab/docker_ws/program_launch
+        target: /workspace/program_launch
+      - type: bind
+        source: /home/infolab/docker_ws/program_subscriber
+        target: /workspace/ws_fast-lio/src/livox_ros_driver/scripts
+      # - type: bind
+      #   source: /var/run/gpsd.sock
+      #   target: /var/run/gpsd.sock
+      # - type: bind
+      #   source: /etc/default/gpsd
+      #   target: /etc/default/gpsd
+      # - type: bind
+      #   source: /tmp/.X11-unix
+      #   target: /tmp/.X11-unix
