@@ -154,11 +154,11 @@ WORKDIR /workspace/ws_fast-lio/src/FAST_LIO/rviz_cfg
 RUN sed -i '298s/Frame Rate: 10/Frame Rate: 10/' loam_livox.rviz && \
     sed -i '119s/Queue Size: 100000/Queue Size: 100000/' loam_livox.rviz && \
     sed -i '101s/Alpha: 0.10000000149011612/Alpha: 0.5/' loam_livox.rviz && \
-    sed -i '112s/Decay Time: 1000/Decay Time: 3000/' loam_livox.rviz && \
+    sed -i '112s/Decay Time: 1000/Decay Time: 30/' loam_livox.rviz && \
     sed -i '337s/Target Frame: global/Target Frame: body/' loam_livox.rviz
 
 
 # Subscriber program (livox_lidar_msg.launch, subscriber_ste.py)
 WORKDIR /workspace/ws_fast-lio/src/livox_ros_driver/launch
 RUN sed -i '34s/$/\n\n/' livox_lidar_msg.launch && \
-    sed -i '35s/$/\t<node pkg="livox_ros_driver" type="subscriber_ste.py" name="research_subscriber" output="screen"\/>/' livox_lidar_msg.launch
+    sed -i '35s/$/\t<node pkg="livox_ros_driver" type="subscriber_forward.py" name="research_subscriber" output="screen"\/>/' livox_lidar_msg.launch
