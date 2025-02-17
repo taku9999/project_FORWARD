@@ -28,11 +28,5 @@ services:
         source: /home/infolab/docker_ws/program_subscriber
         target: /workspace/ws_fast-lio/src/livox_ros_driver/scripts
       # - type: bind
-      #   source: /var/run/gpsd.sock
-      #   target: /var/run/gpsd.sock
-      # - type: bind
-      #   source: /etc/default/gpsd
-      #   target: /etc/default/gpsd
-      # - type: bind
       #   source: /tmp/.X11-unix
       #   target: /tmp/.X11-unix
