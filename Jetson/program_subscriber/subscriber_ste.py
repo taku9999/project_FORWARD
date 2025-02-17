@@ -9,11 +9,18 @@ import datetime
 import time
 import os
 from multiprocessing import Process, Value, Array
+from pymavlink import mavutil
 
 
+# ---------- 点群関係の設定 ----------
 MSG_TYPE = 1 # [0]=PointCloud2, [1]=CustomMsg
+
+# ---------- GPS関係の設定 ----------
 GPS_FLAG = False
-GPS_LOG_DIRS = "/workspace/bind_data"
+LOG_DIRS = "/workspace/bind_data"
+SERIAL_PORT = "/dev/ttyUSB0"
+BAUD_RATE = 115200
+
 
 
 def get_device_time(cmd):
@@ -38,23 +45,25 @@ def get_device_time(cmd):
         return conv_str_milli
 
 
-def callback_lidar(point_cloud):
+def callback_lidar(point_cloud, args):
+    lidar_time = args[0]
+    jetson_time = args[1]
+    gps_lat = args[2]
+    gps_lng = args[3]
+    gps_alt = args[4]
     
-    ros_time_raw = point_cloud.header.stamp # ROS時間
+    lidar_time_raw = point_cloud.header.stamp # LiDAR時間
     jetson_time_unix = time.time() # Jetson時間
     
     print("\n========================================")
-    ros_time_unix = float(str(ros_time_raw.secs) + "." + str(ros_time_raw.nsecs).zfill(9)[:3])
-    ros_time_dt = datetime.datetime.utcfromtimestamp(ros_time_unix)
-    ros_time_dt_jst = ros_time_dt + datetime.timedelta(hours=9)
-    print("ROS_Time: " + ros_time_dt_jst.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3])
+    lidar_time_unix = float(str(lidar_time_raw.secs) + "." + str(lidar_time_raw.nsecs).zfill(9)[:3])
+    lidar_time_dt = datetime.datetime.utcfromtimestamp(lidar_time_unix)
+    lidar_time_dt_jst = lidar_time_dt + datetime.timedelta(hours=9)
+    print("LiDAR_Time: " + lidar_time_dt_jst.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3])
     
     jetson_time_dt = datetime.datetime.utcfromtimestamp(jetson_time_unix)
     jetson_time_dt_jst = jetson_time_dt + datetime.timedelta(hours=9)
     print("Jetson_Time: " + jetson_time_dt_jst.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3])
-
-    diff_time = jetson_time_unix - ros_time_unix
-    print("[Time] Delay: " + str(diff_time))
 
     if MSG_TYPE == 0:
         points = pc2.read_points(point_cloud, field_names=("x", "y", "z", "intensity"), skip_nans=True)
@@ -65,36 +74,69 @@ def callback_lidar(point_cloud):
         num_points = point_cloud.point_num
         print("[Type] CustomMsg")
         print("[Message] Point_Num: " + str(num_points))
+        
+    print("[GPS] lat={}, lng={}, alt={}".format(gps_lat.value, gps_lng.value, gps_alt.value))
+    
+    # 共有メモリの更新
+    lidar_time.value = lidar_time_unix
+    jetson_time.value = jetson_time_unix
 
 
-def process_ros():
+def process_ros(g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt):
     rospy.init_node("research_subscriber")
 
     if MSG_TYPE == 0:
-        rospy.Subscriber("/livox/lidar", PointCloud2, callback_lidar)
+        rospy.Subscriber("/livox/lidar", PointCloud2, callback_lidar, (g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt))
     elif MSG_TYPE == 1:
-        rospy.Subscriber("/livox/lidar", CustomMsg, callback_lidar)
+        rospy.Subscriber("/livox/lidar", CustomMsg, callback_lidar, (g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt))
 
     rospy.spin()
 
 
-def process_gps(log_filepass):
-    print("")
+def process_gps(g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt):
+    # ログファイルの設定
+    log_file_path = LOG_DIRS + "/log_" + str(get_device_time("conv_str")) + ".csv"
+    print("[Debug] Log file save to: {}".format(log_file_path))
+    csv_header = "jetson_time,lidar_time,gps_lat,gps_lng,gps_alt"
+    with open(log_file_path, mode="w") as f:
+        f.write(csv_header + "\n")
+    
+    # シリアルポート経由でMAVLink接続を確立
+    the_connection = mavutil.mavlink_connection(SERIAL_PORT, BAUD_RATE)
+    print("[Debug] MAVLink connected! Waiting data...")
+    the_connection.wait_heartbeat()
+    print("[Debug] MAVLink heartbeat receive!")
+    
+    # GPS情報の取得とログ出力
+    while True:
+        location = the_connection.location()
+        g_gps_lat.value = location.lat
+        g_gps_lng.value = location.lng
+        g_gps_alt.value = location.alt
+        
+        with open(log_file_path, mode="a") as f:
+            f.write(str(g_jetson_time.value))
+            f.write("," + str(g_lidar_time.value))
+            f.write("," + str(location.lat))
+            f.write("," + str(location.lng))
+            f.write("," + str(location.alt) + "\n")
 
 
 def main():
+    # 共有メモリの設定
+    m_lidar_time = Value("d", 0.0)
+    m_jetson_time = Value("d", 0.0)
+    m_gps_lat = Value("d", 0.0)
+    m_gps_lng = Value("d", 0.0)
+    m_gps_alt = Value("d", 0.0)
+    
+    # GPSプロセスの設定
     if GPS_FLAG == True:
-        # Logファイルパスの設定
-        log_filepass = GPS_LOG_DIRS + "/" + "log_" + str(get_device_time("conv_str"))
-        os.makedirs(log_filepass)
-        print("[Debug] Log file save to: {}".format(log_filepass))
-        
-        # GPSプロセスの設定
-        p_gps = Process(target=process_gps, args=(log_filepass,))
+        p_gps = Process(target=process_gps, args=(m_lidar_time, m_jetson_time, m_gps_lat, m_gps_lng, m_gps_alt))
         p_gps.start()
 
     # ROSプロセスの設定
-    p_ros = Process(target=process_ros)
+    p_ros = Process(target=process_ros, args=(m_lidar_time, m_jetson_time, m_gps_lat, m_gps_lng, m_gps_alt))
     p_ros.start()
 
 
