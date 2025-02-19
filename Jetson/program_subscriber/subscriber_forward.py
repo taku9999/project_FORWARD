@@ -93,11 +93,11 @@ def process_ros(g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt):
     rospy.spin()
 
 
-def process_gps(g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt):
+def process_gps(g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt, g_gps_time):
     # ログファイルの設定
     log_file_path = LOG_DIRS + "/log_" + str(get_device_time("conv_str")) + ".csv"
     print("[Debug] Log file save to: {}".format(log_file_path))
-    csv_header = "jetson_time,lidar_time,gps_lat,gps_lng,gps_alt"
+    csv_header = "jetson_time,lidar_time,gps_lat,gps_lng,gps_alt,gps_time"
     with open(log_file_path, mode="w") as f:
         f.write(csv_header + "\n")
     
@@ -113,13 +113,15 @@ def process_gps(g_lidar_time, g_jetson_time, g_gps_lat, g_gps_lng, g_gps_alt):
         g_gps_lat.value = location.lat
         g_gps_lng.value = location.lng
         g_gps_alt.value = location.alt
+        g_gps_time.value = the_connection.timestamp
         
         with open(log_file_path, mode="a") as f:
             f.write(str(g_jetson_time.value))
             f.write("," + str(g_lidar_time.value))
             f.write("," + str(location.lat))
             f.write("," + str(location.lng))
-            f.write("," + str(location.alt) + "\n")
+            f.write("," + str(g_gps_alt.value))
+            f.write("," + str(g_gps_time.value) + "\n")
 
 
 def main():
@@ -129,10 +131,11 @@ def main():
     m_gps_lat = Value("d", 0.0)
     m_gps_lng = Value("d", 0.0)
     m_gps_alt = Value("d", 0.0)
+    m_gps_time = Value("d", 0.0)
     
     # GPSプロセスの設定
     if GPS_FLAG == True:
-        p_gps = Process(target=process_gps, args=(m_lidar_time, m_jetson_time, m_gps_lat, m_gps_lng, m_gps_alt))
+        p_gps = Process(target=process_gps, args=(m_lidar_time, m_jetson_time, m_gps_lat, m_gps_lng, m_gps_alt, m_gps_time))
         p_gps.start()
 
     # ROSプロセスの設定
